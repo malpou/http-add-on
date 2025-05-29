@@ -13,6 +13,7 @@ import (
 
 	"github.com/kedacore/http-add-on/interceptor/config"
 	"github.com/kedacore/http-add-on/interceptor/handler"
+	"github.com/kedacore/http-add-on/pkg/k8s"
 	kedanet "github.com/kedacore/http-add-on/pkg/net"
 	"github.com/kedacore/http-add-on/pkg/util"
 )
@@ -53,6 +54,7 @@ func newForwardingHandler(
 	tlsCfg *tls.Config,
 	tracingCfg *config.Tracing,
 	placeholderHandler *handler.PlaceholderHandler,
+	endpointsCache k8s.EndpointsCache,
 ) http.Handler {
 	roundTripper := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -69,6 +71,29 @@ func newForwardingHandler(
 		var uh *handler.Upstream
 		ctx := r.Context()
 		httpso := util.HTTPSOFromContext(ctx)
+
+		// Check if placeholder is enabled and if we have zero replicas
+		if placeholderHandler != nil && httpso.Spec.PlaceholderConfig != nil && httpso.Spec.PlaceholderConfig.Enabled {
+			// Quick check for zero replicas without waiting
+			endpoints, err := endpointsCache.Get(httpso.GetNamespace(), httpso.Spec.ScaleTargetRef.Service)
+			if err == nil && workloadActiveEndpoints(endpoints) == 0 {
+				lggr.Info("serving placeholder page immediately",
+					"namespace", httpso.GetNamespace(),
+					"service", httpso.Spec.ScaleTargetRef.Service,
+					"reason", "zero replicas detected")
+
+				// Serve placeholder page immediately
+				if placeholderErr := placeholderHandler.ServePlaceholder(w, r, httpso); placeholderErr != nil {
+					lggr.Error(placeholderErr, "failed to serve placeholder page")
+					// Fall back to standard error response
+					w.WriteHeader(http.StatusBadGateway)
+					if _, err := w.Write([]byte("error serving placeholder page")); err != nil {
+						lggr.Error(err, "could not write error response to client")
+					}
+				}
+				return
+			}
+		}
 
 		waitFuncCtx, done := context.WithTimeout(ctx, fwdCfg.waitTimeout)
 		defer done()
