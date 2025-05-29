@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"time"
 
-	v1alpha1 "github.com/kedacore/http-add-on/operator/apis/http/v1alpha1"
+	"github.com/kedacore/http-add-on/operator/apis/http/v1alpha1"
 	"github.com/kedacore/http-add-on/pkg/routing"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -112,40 +111,33 @@ func NewPlaceholderHandler(k8sClient kubernetes.Interface, routingTable routing.
 // ServePlaceholder serves a placeholder page based on the HTTPScaledObject configuration
 func (h *PlaceholderHandler) ServePlaceholder(w http.ResponseWriter, r *http.Request, hso *v1alpha1.HTTPScaledObject) error {
 	if hso.Spec.PlaceholderConfig == nil || !hso.Spec.PlaceholderConfig.Enabled {
-		// Placeholder not enabled, return standard error
 		http.Error(w, "Service temporarily unavailable", http.StatusServiceUnavailable)
 		return nil
 	}
 
 	config := hso.Spec.PlaceholderConfig
 
-	// Set status code
 	statusCode := int(config.StatusCode)
 	if statusCode == 0 {
 		statusCode = http.StatusServiceUnavailable
 	}
 
-	// Set custom headers
 	for k, v := range config.Headers {
 		w.Header().Set(k, v)
 	}
 
-	// Set default headers
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-KEDA-HTTP-Placeholder-Served", "true")
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 
-	// Get template content
 	tmpl, err := h.getTemplate(r.Context(), hso)
 	if err != nil {
-		// Fall back to simple response if template fails
 		w.WriteHeader(statusCode)
 		fmt.Fprintf(w, "<h1>%s is starting up...</h1><meta http-equiv='refresh' content='%d'>",
 			hso.Spec.ScaleTargetRef.Service, config.RefreshInterval)
 		return nil
 	}
 
-	// Prepare template data
 	data := PlaceholderData{
 		ServiceName:     hso.Spec.ScaleTargetRef.Service,
 		Namespace:       hso.Namespace,
@@ -154,17 +146,14 @@ func (h *PlaceholderHandler) ServePlaceholder(w http.ResponseWriter, r *http.Req
 		Timestamp:       time.Now().Format(time.RFC3339),
 	}
 
-	// Render template
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		// Fall back to simple response
 		w.WriteHeader(statusCode)
 		fmt.Fprintf(w, "<h1>%s is starting up...</h1><meta http-equiv='refresh' content='%d'>",
 			hso.Spec.ScaleTargetRef.Service, config.RefreshInterval)
 		return nil
 	}
 
-	// Write response
 	w.WriteHeader(statusCode)
 	_, err = w.Write(buf.Bytes())
 	return err
@@ -174,7 +163,6 @@ func (h *PlaceholderHandler) ServePlaceholder(w http.ResponseWriter, r *http.Req
 func (h *PlaceholderHandler) getTemplate(ctx context.Context, hso *v1alpha1.HTTPScaledObject) (*template.Template, error) {
 	config := hso.Spec.PlaceholderConfig
 
-	// Check for inline content first
 	if config.Content != "" {
 		cacheKey := fmt.Sprintf("%s/%s/inline", hso.Namespace, hso.Name)
 		if tmpl, ok := h.templateCache[cacheKey]; ok {
@@ -189,20 +177,17 @@ func (h *PlaceholderHandler) getTemplate(ctx context.Context, hso *v1alpha1.HTTP
 		return tmpl, nil
 	}
 
-	// Check for ConfigMap content
 	if config.ContentConfigMap != "" {
 		cacheKey := fmt.Sprintf("%s/%s/cm/%s", hso.Namespace, hso.Name, config.ContentConfigMap)
 		if tmpl, ok := h.templateCache[cacheKey]; ok {
 			return tmpl, nil
 		}
 
-		// Fetch ConfigMap
 		cm, err := h.k8sClient.CoreV1().ConfigMaps(hso.Namespace).Get(ctx, config.ContentConfigMap, metav1.GetOptions{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get ConfigMap %s: %w", config.ContentConfigMap, err)
 		}
 
-		// Get template content from ConfigMap
 		key := config.ContentConfigMapKey
 		if key == "" {
 			key = "template.html"
@@ -221,26 +206,7 @@ func (h *PlaceholderHandler) getTemplate(ctx context.Context, hso *v1alpha1.HTTP
 		return tmpl, nil
 	}
 
-	// Use default template
 	return h.defaultTmpl, nil
-}
-
-// GetHTTPSO retrieves the HTTPScaledObject for the given host and path
-func (h *PlaceholderHandler) GetHTTPSO(ctx context.Context, host, path string) (*v1alpha1.HTTPScaledObject, error) {
-	// Find target from routing table
-	// Route the request to find the HTTPScaledObject
-	req := &http.Request{
-		Host: host,
-		URL: &url.URL{
-			Path: path,
-		},
-	}
-	httpso := h.routingTable.Route(req)
-	if httpso == nil {
-		return nil, fmt.Errorf("no route found for host %s path %s", host, path)
-	}
-	return httpso, nil
-
 }
 
 // ClearCache clears the template cache

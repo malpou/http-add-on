@@ -311,6 +311,7 @@ func newHarness(
 		},
 		&tls.Config{},
 		&config.Tracing{},
+		nil,
 		nil),
 		svcCache,
 		false,

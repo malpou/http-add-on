@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	
+
 	. "github.com/kedacore/http-add-on/tests/helper"
 )
 
@@ -22,9 +22,9 @@ const (
 )
 
 type placeholderTemplateData struct {
-	TestNamespace     string
-	TestName          string
-	TestServiceName   string
+	TestNamespace   string
+	TestName        string
+	TestServiceName string
 }
 
 const placeholderTemplate = `
@@ -114,7 +114,7 @@ func TestPlaceholderPages(t *testing.T) {
 
 	// Apply the resources
 	KubectlApplyWithTemplate(t, data, "placeholder-test", placeholderTemplate)
-	
+
 	// Ensure cleanup
 	defer func() {
 		KubectlDeleteWithTemplate(t, data, "placeholder-test", placeholderTemplate)
@@ -131,11 +131,14 @@ func TestPlaceholderPages(t *testing.T) {
 
 	// Make a request and verify placeholder is served
 	testPlaceholderResponse(t)
+
+	// Test that placeholder is served immediately on cold start
+	testImmediatePlaceholderResponse(t)
 }
 
 func testPlaceholderResponse(t *testing.T) {
 	t.Log("Testing placeholder page response")
-	
+
 	var interceptorIP string
 	if UseIngressHost {
 		interceptorIP = ExternalIP
@@ -184,4 +187,52 @@ func testPlaceholderResponse(t *testing.T) {
 		"placeholder served header should be present")
 	assert.Equal(t, "warming-up", resp.Header.Get("X-Service-Status"),
 		"custom header should be present")
+}
+
+func testImmediatePlaceholderResponse(t *testing.T) {
+	t.Log("Testing immediate placeholder page response on cold start")
+
+	var interceptorIP string
+	if UseIngressHost {
+		interceptorIP = ExternalIP
+	} else {
+		interceptorService := GetKubernetesServiceEndpoint(
+			t,
+			KubeClient,
+			"keda-http-add-on-interceptor-proxy",
+			"keda",
+		)
+		interceptorIP = interceptorService.IP
+	}
+
+	url := fmt.Sprintf("http://%s", interceptorIP)
+	req, err := http.NewRequest("GET", url, nil)
+	assert.NoError(t, err)
+	req.Host = testName
+
+	client := &http.Client{
+		Timeout: 2 * time.Second, // Short timeout to ensure immediate response
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	// Measure response time
+	start := time.Now()
+	resp, err := client.Do(req)
+	duration := time.Since(start)
+
+	assert.NoError(t, err)
+	defer resp.Body.Close()
+
+	// Check that response was immediate (less than 500ms)
+	assert.Less(t, duration.Milliseconds(), int64(500),
+		"placeholder should be served immediately, but took %v", duration)
+
+	// Check that we got a 503 status
+	assert.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+	// Check placeholder header
+	assert.Equal(t, "true", resp.Header.Get("X-KEDA-HTTP-Placeholder-Served"),
+		"placeholder served header should be present")
 }

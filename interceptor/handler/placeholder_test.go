@@ -278,43 +278,6 @@ func TestGetTemplate_Caching(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%p", tmpl1), fmt.Sprintf("%p", tmpl2))
 }
 
-func TestGetHTTPSO(t *testing.T) {
-	k8sClient := fake.NewSimpleClientset()
-	routingTable := test.NewTable()
-	handler, _ := NewPlaceholderHandler(k8sClient, routingTable)
-
-	// Add a route to the test routing table
-	hso := &v1alpha1.HTTPScaledObject{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-app",
-			Namespace: "default",
-		},
-		Spec: v1alpha1.HTTPScaledObjectSpec{
-			Hosts: []string{"example.com"},
-			ScaleTargetRef: v1alpha1.ScaleTargetRef{
-				Service: "test-service",
-			},
-		},
-	}
-	// Add route to table
-	routingTable.Memory["example.com"] = hso
-
-	ctx := context.Background()
-
-	// Test successful retrieval
-	result, err := handler.GetHTTPSO(ctx, "example.com", "/")
-	assert.NoError(t, err)
-	assert.NotNil(t, result)
-	assert.Equal(t, "test-app", result.Name)
-	assert.Equal(t, "default", result.Namespace)
-
-	// Test not found
-	result, err = handler.GetHTTPSO(ctx, "notfound.com", "/")
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "no route found")
-}
-
 func TestClearCache(t *testing.T) {
 	k8sClient := fake.NewSimpleClientset()
 	routingTable := test.NewTable()
