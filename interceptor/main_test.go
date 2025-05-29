@@ -94,6 +94,7 @@ func TestRunProxyServerCountMiddleware(t *testing.T) {
 			false,
 			map[string]string{},
 			&tracingCfg,
+			nil,
 		)
 	})
 	// wait for server to start
@@ -234,6 +235,7 @@ func TestRunProxyServerWithTLSCountMiddleware(t *testing.T) {
 			true,
 			map[string]string{"certificatePath": "../certs/tls.crt", "keyPath": "../certs/tls.key"},
 			&tracingCfg,
+			nil,
 		)
 	})
 
@@ -384,6 +386,7 @@ func TestRunProxyServerWithMultipleCertsTLSCountMiddleware(t *testing.T) {
 			true,
 			map[string]string{"certstorePaths": "../certs"},
 			&tracingCfg,
+			nil,
 		)
 	})
 

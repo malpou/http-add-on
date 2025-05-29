@@ -1,0 +1,199 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: placeholder-demo
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xkcd
+  namespace: placeholder-demo
+spec:
+  replicas: 0  # Start with zero replicas
+  selector:
+    matchLabels:
+      app: xkcd
+  template:
+    metadata:
+      labels:
+        app: xkcd
+    spec:
+      containers:
+      - name: xkcd
+        image: registry.k8s.io/e2e-test-images/agnhost:2.45
+        args:
+        - netexec
+        - --http-port=8080
+        ports:
+        - containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xkcd
+  namespace: placeholder-demo
+spec:
+  selector:
+    app: xkcd
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: xkcd-placeholder
+  namespace: placeholder-demo
+data:
+  template.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>XKCD Comics Loading...</title>
+        <meta http-equiv="refresh" content="{{.RefreshInterval}}">
+        <meta charset="utf-8">
+        <style>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                margin: 0;
+                padding: 0;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            .container {
+                text-align: center;
+                padding: 3rem;
+                background: rgba(255, 255, 255, 0.95);
+                border-radius: 20px;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+                max-width: 500px;
+                margin: 1rem;
+            }
+            h1 {
+                color: #333;
+                margin-bottom: 1.5rem;
+                font-size: 2rem;
+                font-weight: 600;
+            }
+            .comic-icon {
+                font-size: 80px;
+                margin: 2rem 0;
+                animation: pulse 2s ease-in-out infinite;
+            }
+            @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+                100% { transform: scale(1); }
+            }
+            .progress-bar {
+                width: 100%;
+                height: 4px;
+                background: #e0e0e0;
+                border-radius: 2px;
+                overflow: hidden;
+                margin: 2rem 0;
+            }
+            .progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #667eea, #764ba2);
+                animation: progress {{.RefreshInterval}}s linear infinite;
+            }
+            @keyframes progress {
+                0% { width: 0%; }
+                100% { width: 100%; }
+            }
+            p {
+                color: #666;
+                margin: 0.5rem 0;
+                line-height: 1.6;
+            }
+            .status {
+                display: inline-block;
+                padding: 0.5rem 1rem;
+                background: #f5f5f5;
+                border-radius: 20px;
+                font-size: 0.875rem;
+                color: #666;
+                margin-top: 1rem;
+            }
+            .tip {
+                font-size: 0.875rem;
+                color: #999;
+                margin-top: 2rem;
+                font-style: italic;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="comic-icon">📚</div>
+            <h1>XKCD Comics</h1>
+            <p>We're preparing your daily dose of humor...</p>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            <p>The service is starting up. This usually takes 15-30 seconds.</p>
+            <div class="status">🔄 Service: {{.ServiceName}}</div>
+            <p class="tip">💡 Tip: Did you know? XKCD stands for... actually, it doesn't stand for anything!</p>
+        </div>
+    </body>
+    </html>
+---
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: xkcd
+  namespace: placeholder-demo
+spec:
+  hosts:
+  - xkcd.example.com
+  scaleTargetRef:
+    name: xkcd
+    service: xkcd
+    port: 8080
+  replicas:
+    min: 0
+    max: 10
+  scalingMetric:
+    concurrency:
+      targetValue: 10
+  placeholderConfig:
+    enabled: true
+    contentConfigMap: xkcd-placeholder
+    contentConfigMapKey: template.html
+    statusCode: 503
+    refreshInterval: 3
+    headers:
+      X-Placeholder-Active: "true"
+      Cache-Control: "no-cache, no-store, must-revalidate"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: xkcd
+  namespace: placeholder-demo
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: xkcd.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: keda-add-ons-http-interceptor-proxy
+            port:
+              number: 8080

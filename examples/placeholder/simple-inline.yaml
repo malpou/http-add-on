@@ -1,0 +1,54 @@
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: simple-app
+  namespace: default
+spec:
+  hosts:
+  - simple.example.com
+  scaleTargetRef:
+    name: simple-app
+    service: simple-app
+    port: 80
+  replicas:
+    min: 0
+    max: 5
+  placeholderConfig:
+    enabled: true
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+          <title>Starting...</title>
+          <meta http-equiv="refresh" content="5">
+          <style>
+              body { 
+                  font-family: sans-serif; 
+                  text-align: center; 
+                  padding: 50px;
+                  background: #f0f0f0;
+              }
+              .spinner {
+                  border: 3px solid #f3f3f3;
+                  border-top: 3px solid #3498db;
+                  border-radius: 50%;
+                  width: 40px;
+                  height: 40px;
+                  animation: spin 1s linear infinite;
+                  margin: 20px auto;
+              }
+              @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+              }
+          </style>
+      </head>
+      <body>
+          <h1>Application Starting</h1>
+          <div class="spinner"></div>
+          <p>Please wait while we prepare your application...</p>
+          <p><small>This page will refresh automatically.</small></p>
+      </body>
+      </html>
+    statusCode: 503
+    refreshInterval: 5

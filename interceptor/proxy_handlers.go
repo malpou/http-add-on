@@ -52,6 +52,7 @@ func newForwardingHandler(
 	fwdCfg forwardingConfig,
 	tlsCfg *tls.Config,
 	tracingCfg *config.Tracing,
+	placeholderHandler *handler.PlaceholderHandler,
 ) http.Handler {
 	roundTripper := &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
@@ -77,6 +78,26 @@ func newForwardingHandler(
 			httpso.Spec.ScaleTargetRef.Service,
 		)
 		if err != nil {
+			// Check if placeholder is enabled for this HTTPScaledObject
+			if placeholderHandler != nil && httpso.Spec.PlaceholderConfig != nil && httpso.Spec.PlaceholderConfig.Enabled {
+				lggr.Info("serving placeholder page",
+					"namespace", httpso.GetNamespace(),
+					"service", httpso.Spec.ScaleTargetRef.Service,
+					"reason", err.Error())
+
+				// Serve placeholder page
+				if placeholderErr := placeholderHandler.ServePlaceholder(w, r, httpso); placeholderErr != nil {
+					lggr.Error(placeholderErr, "failed to serve placeholder page")
+					// Fall back to standard error response
+					w.WriteHeader(http.StatusBadGateway)
+					if _, err := w.Write([]byte(fmt.Sprintf("error on backend (%s)", err))); err != nil {
+						lggr.Error(err, "could not write error response to client")
+					}
+				}
+				return
+			}
+
+			// Standard error response when placeholder is not enabled
 			lggr.Error(err, "wait function failed, not forwarding request")
 			w.WriteHeader(http.StatusBadGateway)
 			if _, err := w.Write([]byte(fmt.Sprintf("error on backend (%s)", err))); err != nil {
