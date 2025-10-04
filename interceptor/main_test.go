@@ -81,9 +81,7 @@ func TestRunProxyServerCountMiddleware(t *testing.T) {
 		fmt.Println(err, "Error setting up tracer")
 	}
 
-	servingCfg := &config.Serving{
-		PlaceholderEnableScript: true,
-	}
+	servingCfg := &config.Serving{}
 	g.Go(func() error {
 		return runProxyServer(
 			ctx,
@@ -226,9 +224,7 @@ func TestRunProxyServerWithTLSCountMiddleware(t *testing.T) {
 		return false, nil
 	}
 	tracingCfg := config.Tracing{Enabled: true, Exporter: "otlphttp"}
-	servingCfg := &config.Serving{
-		PlaceholderEnableScript: true,
-	}
+	servingCfg := &config.Serving{}
 
 	g.Go(func() error {
 		return runProxyServer(
@@ -382,9 +378,7 @@ func TestRunProxyServerWithMultipleCertsTLSCountMiddleware(t *testing.T) {
 	}
 
 	tracingCfg := config.Tracing{Enabled: true, Exporter: "otlphttp"}
-	servingCfg := &config.Serving{
-		PlaceholderEnableScript: true,
-	}
+	servingCfg := &config.Serving{}
 
 	g.Go(func() error {
 		return runProxyServer(
